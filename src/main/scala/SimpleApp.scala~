@@ -1,0 +1,160 @@
+/* SimpleApp.scala */
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
+
+object SimpleApp {
+    def main(args: Array[String]) {
+        val logFile = "README.md" // Should be some file on your system
+        val conf = new SparkConf().setAppName("Simple Application")
+        val sc = new SparkContext(conf)
+        val logData = sc.textFile(logFile, 2).cache()
+        val numAs = logData.filter(line => line.contains("a")).count()
+        val numBs = logData.filter(line => line.contains("b")).count()
+        println("Lines with a: %s, Lines with b: %s".format(numAs, numBs))
+    }
+}
+
+object Bigrams {
+
+    def main(args: Array[String]) {
+        val text = "bible+shakes.nopunc" // input file
+	val conf = new SparkConf().setAppName("Simple Application")
+        val sc = new SparkContext(conf)
+        val input = sc.textFile(text, 2).cache()
+	//use sliding(2) to keep pair of words, reduceByKey to sum them up and finally filter out non-bigrams (size<2)
+	val counts = input.flatMap(line => line.split(" ").filterNot(x => x=="" || x==" ").sliding(2)).map(word => 	(word.toVector, 1)).reduceByKey((a, b) => a + b).filter{case(vect, freq) => vect.size==2}
+	counts.saveAsTextFile("Part1a")
+	val counts2 = counts.map{case(vect, count) => (vect(1), (vect, count))}
+	//counts2.saveAsTextFile("2")
+	val counts1 = counts.map{case(vect, count) => (vect(0), (vect, count))}
+	//counts1.saveAsTextFile("1")
+	val unionset = counts1.union(counts2)
+	//unionset.saveAsTextFile("unionset")
+	//group the union by the key (word), sort them as per count in descending order (note the negative sign) and take top 5 bigrams
+	val ans = unionset.groupByKey().map{case(key, numbers) => key->numbers.toList.sortBy(-_._2).take(5)}
+	//flatten the top 5 values obtained in list format for ease in reading
+	val ans1 = ans.flatMap({case (key, numbers) => numbers.map(key-> _)})
+	ans1.saveAsTextFile("Part1b")
+	
+    }
+}
+
+object FECSQLApp {
+  import org.apache.spark.sql.SparkSession
+
+  import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+  import org.apache.spark.sql.Encoder
+
+
+  case class CM(CMTE_ID : String, CMTE_NM: String,	TRES_NM: String,
+                CMTE_ST1: String, CMTE_ST2: String,	CMTE_CITY: String,
+                CMTE_ST: String,	CMTE_ZIP: String,	CMTE_DSGN: String,
+                CMTE_TP: String,	CMTE_PTY_AFFILIATION: String,	CMTE_FILING_FREQ: String,
+                ORG_TP: String,	CONNECTED_ORG_NM: String,	CAND_ID: String)
+
+  case class CN(CAND_ID: String, 	CAND_NAME: String,	CAND_PTY_AFFILIATION: String,	CAND_ELECTION_YR: Int,
+                CAND_OFFICE_ST: String,	CAND_OFFICE: String,	CAND_OFFICE_DISTRICT: String,	CAND_ICI: String,
+                CAND_STATUS: String,	CAND_PCC: String,	CAND_ST1: String,	CAND_ST2: String,	CAND_CITY: String,
+                CAND_ST: String,	CAND_ZIP: String)
+
+  case class CCL(CAND_ID: String,	CAND_ELECTION_YR: Int,	FEC_ELECTION_YR: Int,
+                 CMTE_ID: String,	CMTE_TP: String,	CMTE_DSGN: String,	LINKAGE_ID: String)
+
+  case class ITCONT(CMTE_ID: String, AMNDT_IND: String,	RPT_TP: String,	TRANSACTION_PGI: String,
+                    IMAGE_NUM: String,	TRANSACTION_TP: String,	ENTITY_TP: String,	NAME: String,
+                    CITY: String,	STATE: String,	ZIP_CODE: String,	EMPLOYER: String,
+                    OCCUPATION: String,	TRANSACTION_DT: String,	TRANSACTION_AMT: Float,
+                    OTHER_ID: String,	TRAN_ID: String,	FILE_NUM: String,	MEMO_CD: String,
+                    MEMO_TEXT: String,	SUB_ID: String)
+
+  case class ITPAS(CMTE_ID: String, AMNDT_IND: String, RPT_TP: String, TRANSACTION_PGI: String,
+                   IMAGE_NUM: String, TRANSACTION_TP: String, ENTITY_TP: String, NAME: String,
+                   CITY: String,	STATE: String,	ZIP_CODE: String,	EMPLOYER: String,
+                   OCCUPATION: String,	TRANSACTION_DT: String,	TRANSACTION_AMT: Float,
+                   OTHER_ID: String, CAND_ID: String, TRAN_ID: String, FILE_NUM: String,
+                   MEMO_CD: String, MEMO_TEXT: String, SUB_ID: String)
+
+  case class ITOTH(CMTE_ID: String,	AMNDT_IND: String,	RPT_TP: String,	TRANSACTION_PGI: String,
+                   IMAGE_NUM: String,	TRANSACTION_TP: String,	ENTITY_TP: String,
+                   NAME: String,	CITY: String,	STATE: String,	ZIP_CODE: String,	EMPLOYER: String,
+                   OCCUPATION: String,	TRANSACTION_DT: String,	TRANSACTION_AMT: Float,
+                   OTHER_ID: String,	TRAN_ID: String,	FILE_NUM: String,	MEMO_CD: String,
+                   MEMO_TEXT: String,	SUB_ID: String)
+
+  def main (args: Array[String]): Unit = {
+
+    /*if (args.size != 1) {
+      println("FEC directory path required arg missing!")
+      System.exit(1)
+    }
+
+    val fecDir = args(0)*/
+
+    val spark = SparkSession
+      .builder()
+      .appName("Spark SQL Example")
+      .config("spark.some.config.option", "some-value")
+      .getOrCreate()
+
+    // For implicit conversions from RDDs to DataFrames
+    import spark.implicits._
+
+    val cmDF = spark.sparkContext
+      .textFile("/home/sodhanipranav/Desktop/244a/fecDir/cm.txt")
+      .map(_.split("\\|",-1))
+      .map(a => CM(a(0), a(1), a(2), a(3), a(4), a(5), a(6), a(7), a(8), a(9), a(10), a(11), a(12), a(13), a(14)))
+      .toDF()
+
+    val cnDF = spark.sparkContext
+      .textFile("/home/sodhanipranav/Desktop/244a/fecDir/cn.txt")
+      .map(_.split("\\|",-1))
+      .map(a => CN(a(0), a(1), a(2), a(3).trim.toInt, a(4), a(5), a(6), a(7), a(8), a(9), a(10), a(11), a(12), a(13), a(14)))
+      .toDF()
+
+    val cclDF = spark.sparkContext
+      .textFile("/home/sodhanipranav/Desktop/244a/fecDir/ccl.txt")
+      .map(_.split("\\|",-1))
+      .map(a => CCL(a(0), a(1).trim.toInt, a(2).trim.toInt, a(3), a(4), a(5), a(6)))
+      .toDF()
+
+    val itcontDF = spark.sparkContext
+      .textFile("/home/sodhanipranav/Desktop/244a/fecDir/itcont.txt")
+      .map(_.split("\\|",-1))
+      .map(a => ITCONT(a(0), a(1), a(2), a(3), a(4), a(5), a(6), a(7), a(8), a(9), a(10), a(11), a(12), a(13),
+                   a(14).trim.toFloat, a(15), a(16), a(17), a(18), a(19), a(20)))
+      .toDF()
+
+    val itpasDF = spark.sparkContext
+      .textFile("/home/sodhanipranav/Desktop/244a/fecDir/itpas.txt")
+      .map(_.split("\\|",-1))
+      .map(a => ITPAS(a(0), a(1), a(2), a(3), a(4), a(5), a(6), a(7), a(8), a(9), a(10), a(11), a(12), a(13),
+        a(14).trim.toFloat, a(15), a(16), a(17), a(18), a(19), a(20), a(21)))
+      .toDF()
+
+    val itothDF = spark.sparkContext
+      .textFile("/home/sodhanipranav/Desktop/244a/fecDir/itoth.txt")
+      .map(_.split("\\|",-1))
+      .map(a => ITOTH(a(0), a(1), a(2), a(3), a(4), a(5), a(6), a(7), a(8), a(9), a(10), a(11), a(12), a(13),
+        a(14).trim.toFloat, a(15), a(16), a(17), a(18), a(19), a(20)))
+      .toDF()
+
+    cmDF.createOrReplaceTempView("cm")
+    cnDF.createOrReplaceTempView("cn")
+    cclDF.createOrReplaceTempView("ccl")
+    itcontDF.createOrReplaceTempView("itcont")
+    itpasDF.createOrReplaceTempView("itpas")
+    itothDF.createOrReplaceTempView("itothDF")
+
+    spark.sql("SELECT CAND_NAME, CAND_ID, CAND_PCC FROM cn WHERE (CAND_NAME LIKE '%CLINTON%' OR CAND_NAME LIKE '%TRUMP%' OR CAND_NAME LIKE '%CRUZ%' OR CAND_NAME LIKE '%SANDERS%') AND CAND_STATUS='C' AND CAND_OFFICE='P'").show()
+
+    spark.sql("SELECT cn.CAND_NAME, count(itcont.TRAN_ID) AS Count FROM cn, itcont WHERE cn.CAND_PCC=itcont.CMTE_ID AND cn.CAND_ELECTION_YR=2016 AND (CAND_NAME LIKE '%CLINTON%' OR CAND_NAME LIKE '%TRUMP%' OR CAND_NAME LIKE '%CRUZ%' OR CAND_NAME LIKE '%SANDERS%') AND CAND_STATUS='C' AND CAND_OFFICE='P' GROUP BY cn.CAND_NAME").show()
+     
+    spark.sql("SELECT cn.CAND_NAME, sum(itcont.TRANSACTION_AMT) AS Total_Amount FROM cn, itcont WHERE cn.CAND_PCC=itcont.CMTE_ID AND cn.CAND_ELECTION_YR=2016 AND (CAND_NAME LIKE '%CLINTON%' OR CAND_NAME LIKE '%TRUMP%' OR CAND_NAME LIKE '%CRUZ%' OR CAND_NAME LIKE '%SANDERS%') AND CAND_STATUS='C' AND CAND_OFFICE='P' GROUP BY cn.CAND_NAME").show()
+
+    spark.sql("SELECT cn.CAND_NAME, cm.CMTE_NM, ccl.LINKAGE_ID FROM cn, cm, ccl WHERE cn.CAND_PCC=cm.CMTE_ID AND cn.CAND_ELECTION_YR=2016 AND (cn.CAND_NAME LIKE '%CLINTON%' OR cn.CAND_NAME LIKE '%TRUMP%' OR cn.CAND_NAME LIKE '%CRUZ%' OR cn.CAND_NAME LIKE '%SANDERS%') AND CAND_STATUS='C' AND CAND_OFFICE='P' AND cn.CAND_ID=ccl.CAND_ID").show()
+    spark.sql("SELECT cn.CAND_NAME, count(itothDF.TRAN_ID) AS Count FROM cn, itothDF WHERE cn.CAND_PCC=itothDF.CMTE_ID AND cn.CAND_ELECTION_YR=2016 AND (cn.CAND_NAME LIKE '%CLINTON%' OR cn.CAND_NAME LIKE '%TRUMP%' OR cn.CAND_NAME LIKE '%CRUZ%' OR cn.CAND_NAME LIKE '%SANDERS%') AND CAND_STATUS='C' AND CAND_OFFICE='P' GROUP BY cn.CAND_NAME").show()
+       
+    spark.sql("SELECT cn.CAND_NAME, sum(itothDF.TRANSACTION_AMT) AS Total_Amount FROM cn, itothDF WHERE cn.CAND_PCC=itothDF.CMTE_ID AND cn.CAND_ELECTION_YR=2016 AND (cn.CAND_NAME LIKE '%CLINTON%' OR cn.CAND_NAME LIKE '%TRUMP%' OR cn.CAND_NAME LIKE '%CRUZ%' OR cn.CAND_NAME LIKE '%SANDERS%') AND CAND_STATUS='C' AND CAND_OFFICE='P' GROUP BY cn.CAND_NAME").show()
+  }
+
+}
