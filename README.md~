@@ -1,14 +1,13 @@
-## Bigram Prediction using Maximum Likelihood Technique
----
+### Bigram Prediction using Maximum Likelihood Technique
 
-### What does the program do?
+#### What does the program do?
 
 Given the nth word, three possibilities of the the (n+1)th word are evaluated and displayed to the user. The user selects a word
 among the three options or enters a different word and the process continues until the user enters ":stop" (without quotes) as input.
 
 ---
 
-### How does the program calculate top 3 possibilities?
+#### How does the program calculate top 3 possibilities?
 
 The text dataset used is "bible+shakes.nopunc". Firstly, all bigrams (pairs of 2 words) appearing in the text are found and their
 frequencies calculated. For each word in the text, we filter out top 3 bigrams (on count basis) in which the word appears as the first word.
@@ -21,7 +20,7 @@ the next 3 candidates.
 
 ---
 
-### How to run the code?
+#### How to run the code?
 
 1. Set up your SPARK_HOME.
 2. Make sure you are in the repository folder while on the terminal.
@@ -34,4 +33,4 @@ the next 3 candidates.
 
 ---
 
-#### For any queries/suggestions please write to sodhanipranav[at]cs.ucla.edu.
+##### For any queries/suggestions please write to sodhanipranav[at]cs.ucla.edu.

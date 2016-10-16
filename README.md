@@ -1,5 +1,7 @@
 ### Bigram Prediction using Maximum Likelihood Technique
 
+---
+
 #### What does the program do?
 
 Given the nth word, three possibilities of the the (n+1)th word are evaluated and displayed to the user. The user selects a word
